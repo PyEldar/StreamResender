@@ -13,18 +13,25 @@ class StreamReader(threading.Thread):
         self.imgs = imgs
 
     def run(self):
-        while True:
-            logging.debug('{} waiting for read event'.format(self.name))
-            while not self._read_event.is_set():
-                if self._stop_event.is_set():
-                    logging.warning('Stopping thread {}'.format(self.name))
-                    return
+        while not self._stop_event.is_set():
+            try:
+                logging.debug('{} waiting for read event'.format(self.name))
+                while not self._read_event.is_set():
+                    if self._stop_event.is_set():
+                        logging.warning('Stopping thread {}'.format(self.name))
+                        return
+                    time.sleep(0.1)
+                r = requests.get(self.url, stream=True, timeout=10, verify=False, auth=('xiaomi', 'camcam'))
+                logging.info('Status code of get to {} is {}'.format(r.url, r.status_code))
+                if r.status_code == 200:
+                    self._read_stream(r)
+                    logging.debug('End of stream from {}'.format(r.url))
+            except requests.exceptions.ConnectionError:
+                logging.exception('Reader connection error')
                 time.sleep(0.1)
-            r = requests.get(self.url, stream=True, timeout=10, verify=False, auth=('xiaomi', 'camcam'))
-            logging.info('Status code of get to {} is {}'.format(r.url, r.status_code))
-            if r.status_code == 200:
-                self._read_stream(r)
-                logging.debug('End of stream from {}'.format(r.url))
+                continue
+            finally:
+                self.imgs[self.name] = None
 
     def _read_stream(self, request):
         bytes_array = bytes()
@@ -53,6 +60,5 @@ class StreamReader(threading.Thread):
         return self._read_event.is_set()
 
     def stop(self):
-        self._read_event.clear()
-        self.imgs[self.name] = None
+        self.stop_reading()
         self._stop_event.set()

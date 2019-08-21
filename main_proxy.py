@@ -44,5 +44,5 @@ class MainProxy:
 
 
 if __name__ == '__main__':
-    proxy = MainProxy(['https://192.168.1.101:8080/video'], 'localhost')
+    proxy = MainProxy(['https://192.168.1.103:8080/video', 'https://192.168.1.101:8080/video', 'https://192.168.1.104:8080/video'], 'localhost')
     proxy.run()

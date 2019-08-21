@@ -20,20 +20,19 @@ class StreamUploader:
 
     def _trigger_loop(self):
         logging.debug('creating trigger socket')
-        trigger_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
-        trigger_socket.connect((self.url, self.trigger_port))
+        trigger_socket = self._retry_connection(self.url,
+                                                self.trigger_port,
+                                                retry_count=30,
+                                                backoff_multiplier=3)
         try:
             logging.info('Trigger socket connected')
             while True:
                 logging.debug('waiting for remote trigger')
                 self._wait_for_data(trigger_socket, b'send_data')
+                logging.debug('Informing trigger server about number of streams')
+                trigger_socket.send(str(len(self.imgs)).encode())
+                data_start_port = int(trigger_socket.recv(9).decode().strip())
                 self.should_upload.set()
-                while True:
-                    try:
-                        data_start_port = int(trigger_socket.recv(9).decode().strip())
-                        break
-                    except ValueError:
-                        logging.warning('Receive non numeric value as data_start_port from trigger_socket')
                 self._start_upload(data_start_port)
 
                 logging.debug('Waiting for remote close data trigger')
@@ -62,15 +61,30 @@ class StreamUploader:
 
     def _send_stream(self, port, image_key):
         logging.debug('Connecting sender to port {}'.format(port))
-        data_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
-        data_socket.connect((self.url, port))
-        try:
+        with self._retry_connection(self.url, port) as data_socket:
             logging.debug('Sender connected to port {} preparing to send image {}'.format(port, image_key))
-            while self.imgs[image_key] is None:
-                time.sleep(0.1)
             while self.should_upload.is_set():
-                logging.debug('Sending image {} to port {}'.format(image_key, port))
-                data_socket.sendall(str(len(self.imgs[image_key])).encode())
-                data_socket.sendall(self.imgs[image_key])
-        finally:
-            data_socket.close()
+                while self.imgs[image_key] is None:
+                    time.sleep(0.1)
+                logging.debug('Sending image from {} to port {}'.format(image_key, port))
+                data_socket.send(str(len(self.imgs[image_key])).encode())
+                data_socket.send(self.imgs[image_key])
+
+    def _retry_connection(self, url, port, retry_count=5, backoff_multiplier=2):
+        backoff = 0.1
+        for _ in range(retry_count):
+            try:
+                s = socket.socket()
+                s.connect((url, port))
+                return s
+            except ConnectionRefusedError as ex:
+                logging.debug('Connection to {}:{} refused, trying again in {} seconds'.format(
+                    url,
+                    port,
+                    backoff
+                ))
+                exception = ex
+                time.sleep(backoff)
+                backoff *= backoff_multiplier
+        else:
+            raise exception
