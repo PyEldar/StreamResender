@@ -5,12 +5,13 @@ import time
 
 
 class StreamReader(threading.Thread):
-    def __init__(self, url, imgs, *args, **kwargs):
+    def __init__(self, url, imgs, events, *args, **kwargs):
         super().__init__()
         self.url = url
         self._read_event = threading.Event()
         self._stop_event = threading.Event()
         self.imgs = imgs
+        self.events = events
 
     def run(self):
         while not self._stop_event.is_set():
@@ -45,7 +46,9 @@ class StreamReader(threading.Thread):
             if a != -1 and b != -1:
                 jpg = bytes_array[a:b + 2]
                 bytes_array = bytes_array[b + 2:]
+                logging.debug('Read one')
                 self.imgs[self.name] = jpg
+                self.events[self.name].set()
 
     def read(self):
         if not self.is_alive():

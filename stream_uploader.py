@@ -9,11 +9,12 @@ class EndOfStreamException(Exception):
 
 
 class StreamUploader:
-    def __init__(self, url, trigger_port, imgs):
+    def __init__(self, url, trigger_port, imgs, events):
         self.url = url
         self.trigger_port = trigger_port
         self.should_upload = threading.Event()
         self.imgs = imgs
+        self.events = events
 
     def handle_trigger(self):
         threading.Thread(target=self._trigger_loop).start()
@@ -62,13 +63,15 @@ class StreamUploader:
     def _send_stream(self, port, image_key):
         logging.debug('Connecting sender to port {}'.format(port))
         with self._retry_connection(self.url, port) as data_socket:
+            # data_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             logging.debug('Sender connected to port {} preparing to send image {}'.format(port, image_key))
             while self.should_upload.is_set():
                 while self.imgs[image_key] is None:
                     time.sleep(0.1)
                 logging.debug('Sending image from {} to port {}'.format(image_key, port))
-                data_socket.send(str(len(self.imgs[image_key])).encode())
-                data_socket.send(self.imgs[image_key])
+                self.events[image_key].wait()
+                self.events[image_key].clear()
+                data_socket.sendall(self.imgs[image_key])
 
     def _retry_connection(self, url, port, retry_count=5, backoff_multiplier=2):
         backoff = 0.1
