@@ -71,7 +71,7 @@ class StreamUploader:
                 logging.debug('Sending image from {} to port {}'.format(image_key, port))
                 self.events[image_key].wait()
                 self.events[image_key].clear()
-                data_socket.sendall(self.imgs[image_key])
+                data_socket.sendto(self.imgs[image_key], (self.url, port))
 
     def _retry_connection(self, url, port, retry_count=5, backoff_multiplier=2):
         backoff = 0.1
