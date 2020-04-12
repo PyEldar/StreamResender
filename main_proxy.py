@@ -4,21 +4,22 @@ import threading
 
 from stream_reader import StreamReader
 from stream_uploader import StreamUploader
+from config import MainProxyConfig
 
 logging.basicConfig(level=logging.DEBUG)
 
 
 class MainProxy:
-    def __init__(self, stream_urls, upload_url):
-        self.stream_urls = stream_urls
+    def __init__(self):
+        self.config = MainProxyConfig
         self.imgs = dict()
         self.events = dict()
         self.readers = list()
-        self.uploader = StreamUploader(upload_url, trigger_port=8888, imgs=self.imgs, events=self.events)
+        self.uploader = StreamUploader(imgs=self.imgs, events=self.events)
 
     def _init_readers(self):
-        for i, url in enumerate(self.stream_urls):
-            reader = StreamReader(url, self.imgs, events=self.events, name='Reader_' + str(i))
+        for i, stream in enumerate(self.config.streams):
+            reader = StreamReader(stream['url'], self.imgs, events=self.events, name='Reader_' + str(i), auth=stream.get('auth'))
             self.readers.append(reader)
             self.imgs[reader.name] = None
             self.events[reader.name] = threading.Event()
@@ -47,5 +48,5 @@ class MainProxy:
 
 
 if __name__ == '__main__':
-    proxy = MainProxy(['https://192.168.1.102:8080/video'], '80.211.218.239')
+    proxy = MainProxy()
     proxy.run()

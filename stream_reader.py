@@ -5,8 +5,9 @@ import time
 
 
 class StreamReader(threading.Thread):
-    def __init__(self, url, imgs, events, *args, **kwargs):
+    def __init__(self, url, imgs, events, auth=None, *args, **kwargs):
         super().__init__()
+        self.auth = auth
         self.url = url
         self._read_event = threading.Event()
         self._stop_event = threading.Event()
@@ -22,7 +23,7 @@ class StreamReader(threading.Thread):
                         logging.warning('Stopping thread {}'.format(self.name))
                         return
                     time.sleep(0.1)
-                r = requests.get(self.url, stream=True, timeout=10, verify=False, auth=('xiaomi', 'camcam'))
+                r = requests.get(self.url, stream=True, timeout=10, verify=False, auth=self.auth)
                 logging.info('Status code of get to {} is {}'.format(r.url, r.status_code))
                 if r.status_code == 200:
                     self._read_stream(r)

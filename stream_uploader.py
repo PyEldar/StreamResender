@@ -3,15 +3,18 @@ import threading
 import logging
 import time
 
+from config import StreamUploaderConfig
 
 class EndOfStreamException(Exception):
     pass
 
 
 class StreamUploader:
-    def __init__(self, url, trigger_port, imgs, events):
-        self.url = url
-        self.trigger_port = trigger_port
+    def __init__(self, imgs, events):
+        self.config = StreamUploaderConfig
+        self.url = self.config.upload_to
+        self.trigger_port = self.config.trigger_port
+        self.upload_rate = self.config.upload_rate_per_second
         self.should_upload = threading.Event()
         self.imgs = imgs
         self.events = events
@@ -24,7 +27,8 @@ class StreamUploader:
         trigger_socket = self._retry_connection(self.url,
                                                 self.trigger_port,
                                                 retry_count=30,
-                                                backoff_multiplier=3)
+                                                backoff_multiplier=3,
+                                                max_backoff_seconds=30)
         try:
             logging.info('Trigger socket connected')
             while True:
@@ -63,7 +67,7 @@ class StreamUploader:
     def _send_stream(self, port, image_key):
         logging.debug('Connecting sender to port {}'.format(port))
         with self._retry_connection(self.url, port) as data_socket:
-            # data_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            data_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             logging.debug('Sender connected to port {} preparing to send image {}'.format(port, image_key))
             while self.should_upload.is_set():
                 while self.imgs[image_key] is None:
@@ -72,8 +76,9 @@ class StreamUploader:
                 self.events[image_key].wait()
                 self.events[image_key].clear()
                 data_socket.sendall(self.imgs[image_key])
+                time.sleep(1 / self.upload_rate)
 
-    def _retry_connection(self, url, port, retry_count=5, backoff_multiplier=2):
+    def _retry_connection(self, url, port, retry_count=5, backoff_multiplier=2, max_backoff_seconds=120):
         backoff = 0.1
         for _ in range(retry_count):
             try:
@@ -88,6 +93,5 @@ class StreamUploader:
                 ))
                 exception = ex
                 time.sleep(backoff)
-                backoff *= backoff_multiplier
-        else:
-            raise exception
+                backoff = backoff * backoff_multiplier if backoff * backoff_multiplier < max_backoff_seconds else max_backoff_seconds
+        raise exception
